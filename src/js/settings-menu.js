@@ -1,11 +1,52 @@
 // src/js/settings-menu.js
 (() => {
   const THEME_STORAGE_KEY = 'grok-theme-preference';
+  const LANGUAGE_STORAGE_KEY = 'grok-language-preference';
   const VIEWPORT_MARGIN = 8;
   const GAP = 8;
   const DARK_MEDIA_QUERY = '(prefers-color-scheme: dark)';
+  const LANGUAGES = [
+    ['ar', 'العربية', 'Arabic'],
+    ['ar-SA', 'العربية (السعودية)', 'Arabic (Saudi Arabia)'],
+    ['bn', 'বাংলা', 'Bengali'],
+    ['cs', 'Čeština', 'Czech'],
+    ['de', 'Deutsch', 'German'],
+    ['en', 'English', ''],
+    ['es', 'Español', 'Spanish'],
+    ['fa', 'فارسی', 'Persian'],
+    ['fil', 'Filipino', 'Filipino'],
+    ['fr', 'Français', 'French'],
+    ['gu', 'ગુજરાતી', 'Gujarati'],
+    ['hi', 'हिन्दी', 'Hindi'],
+    ['hu', 'Magyar', 'Hungarian'],
+    ['id', 'Bahasa Indonesia', 'Indonesian'],
+    ['it', 'Italiano', 'Italian'],
+    ['ja', '日本語', 'Japanese'],
+    ['ko', '한국어', 'Korean'],
+    ['mr', 'मराठी', 'Marathi'],
+    ['nl', 'Nederlands', 'Dutch'],
+    ['pl', 'Polski', 'Polish'],
+    ['pt', 'Português', 'Portuguese'],
+    ['ro', 'Română', 'Romanian'],
+    ['ru', 'Русский', 'Russian'],
+    ['sv', 'Svenska', 'Swedish'],
+    ['ta', 'தமிழ்', 'Tamil'],
+    ['te', 'తెలుగు', 'Telugu'],
+    ['tr', 'Türkçe', 'Turkish'],
+    ['uk-UA', 'Українська мова', 'Ukrainian'],
+    ['vi', 'Tiếng Việt', 'Vietnamese'],
+    ['zh', '简体中文', 'Simplified Chinese'],
+    ['zh-TW', '繁體中文', 'Traditional Chinese']
+  ];
 
   const createId = (prefix) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+
+  const escapeHtml = (value) => String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
   const getThemePreference = () => {
     try {
@@ -56,6 +97,52 @@
     }));
   };
 
+  const normalizeLanguage = (value) => {
+    const supported = new Set(LANGUAGES.map(([code]) => code));
+    if (supported.has(value)) {
+      return value;
+    }
+
+    const lower = String(value || '').toLowerCase();
+    const direct = LANGUAGES.find(([code]) => code.toLowerCase() === lower);
+    if (direct) {
+      return direct[0];
+    }
+
+    const prefix = LANGUAGES.find(([code]) => lower.startsWith(code.toLowerCase()));
+    return prefix ? prefix[0] : 'en';
+  };
+
+  const getLanguagePreference = () => {
+    try {
+      const stored = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+      if (stored) {
+        return normalizeLanguage(stored);
+      }
+    } catch (_error) {
+      // noop
+    }
+
+    return normalizeLanguage(document.documentElement.lang || navigator.language || 'en');
+  };
+
+  const applyLanguage = (languageCode) => {
+    const normalized = normalizeLanguage(languageCode);
+
+    try {
+      window.localStorage.setItem(LANGUAGE_STORAGE_KEY, normalized);
+    } catch (_error) {
+      // noop
+    }
+
+    document.documentElement.lang = normalized;
+    document.documentElement.setAttribute('data-language-preference', normalized);
+
+    document.dispatchEvent(new CustomEvent('stage:language-change', {
+      detail: { language: normalized }
+    }));
+  };
+
   const buildMenuMarkup = (triggerId, menuId, activeTheme) => {
     const stateFor = (value) => (activeTheme === value ? 'delayed-open' : 'closed');
     const activeClassFor = (value) => (activeTheme === value ? ' bg-button-ghost-hover' : '');
@@ -81,6 +168,50 @@
       </div>
     `;
   };
+
+  const buildLanguageItemsMarkup = (activeLanguage, filter) => {
+    const normalizedFilter = String(filter || '').trim().toLocaleLowerCase();
+    const filtered = normalizedFilter
+      ? LANGUAGES.filter(([code, nativeName, englishName]) => {
+          const haystack = `${code} ${nativeName} ${englishName}`.toLocaleLowerCase();
+          return haystack.includes(normalizedFilter);
+        })
+      : LANGUAGES;
+
+    const checkIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="stroke-[2] size-4" data-testid="check-icon"><path d="M19.7998 6.59961L10.1221 19.5039L4.30762 13.9219L5.69238 12.4785L9.87793 16.4961L18.2002 5.40039L19.7998 6.59961Z" fill="currentColor"></path></svg>';
+
+    return filtered.map(([code, nativeName, englishName], index) => {
+      const isActive = code === activeLanguage;
+      const content = englishName
+        ? `${escapeHtml(nativeName)}<span class="text-muted-foreground">${escapeHtml(englishName)}</span>`
+        : `${escapeHtml(nativeName)}${isActive ? checkIcon : ''}`;
+      const trailing = englishName && isActive ? checkIcon : '';
+      const elementId = `settings-language-option-${index}-${code.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+
+      return `<div class="relative flex select-none items-center gap-2 px-3.5 py-3 text-sm outline-none after:absolute after:inset-1 after:rounded-lg after:transition after:pointer-events-none ease-in-out focus:after:bg-card-hover [&amp;[data-selected='true']]:after:bg-card-hover justify-between cursor-pointer" id="${elementId}" cmdk-item="" role="option" aria-disabled="false" aria-selected="${isActive ? 'true' : 'false'}" data-disabled="false" data-selected="${isActive ? 'true' : 'false'}" data-value="${escapeHtml(code)}" tabindex="0">${content}${trailing}</div>`;
+    }).join('');
+  };
+
+  const buildLanguageDialogMarkup = (activeLanguage, filter, ids) => `
+    <div data-state="open" class="fixed inset-0 bg-overlay backdrop-blur-[2px] duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" style="pointer-events: auto;" data-aria-hidden="true" aria-hidden="true" data-language-overlay="true"></div>
+    <div role="dialog" id="${ids.dialog}" aria-labelledby="${ids.title}" data-state="open" class="fixed left-[50%] top-[50%] translate-x-[-50%] translate-y-[-50%] gap-4 dark:border dark:border-border-l1 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] focus:outline-none bg-background rounded-2xl outline-none h-[calc(100dvh-64px-128px)] w-full md:w-[400px] max-w-3xl flex flex-col md:h-[min(500px,90dvh)]" data-analytics-name="language_selector" tabindex="-1" style="pointer-events: auto;" data-language-dialog="true">
+      <div class="space-y-1.5 text-center sm:text-left py-3 flex flex-row items-center gap-2">
+        <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+          <h2 id="${ids.title}" class="text-lg font-semibold leading-none tracking-tight sr-only">Language Selector</h2>
+        </div>
+      </div>
+      <div tabindex="-1" class="flex w-full flex-col overflow-hidden rounded-xl text-popover-foreground" cmdk-root="">
+        <label cmdk-label="" for="${ids.input}" id="${ids.label}" style="position: absolute; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; border-width: 0px;"></label>
+        <div class="flex items-center border-b-2 border-input-border px-3" cmdk-input-wrapper="">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" class="me-2 h-4 w-4 shrink-0 opacity-50"><path d="M10 6.5C10 8.433 8.433 10 6.5 10C4.567 10 3 8.433 3 6.5C3 4.567 4.567 3 6.5 3C8.433 3 10 4.567 10 6.5ZM9.30884 10.0159C8.53901 10.6318 7.56251 11 6.5 11C4.01472 11 2 8.98528 2 6.5C2 4.01472 4.01472 2 6.5 2C8.98528 2 11 4.01472 11 6.5C11 7.56251 10.6318 8.53901 10.0159 9.30884L12.8536 12.1464C13.0488 12.3417 13.0488 12.6583 12.8536 12.8536C12.6583 13.0488 12.3417 13.0488 12.1464 12.8536L9.30884 10.0159Z" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"></path></svg>
+          <input class="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50" placeholder="Search language" cmdk-input="" autocomplete="off" autocorrect="off" spellcheck="false" aria-autocomplete="list" role="combobox" aria-expanded="true" aria-controls="${ids.list}" aria-labelledby="${ids.label}" id="${ids.input}" type="text" value="${escapeHtml(filter || '')}">
+        </div>
+        <div class="overflow-y-auto overflow-x-hidden p-1" cmdk-list="" role="listbox" aria-label="Suggestions" id="${ids.list}" style="--cmdk-list-height: 1395.0px;">
+          <div cmdk-list-sizer="">${buildLanguageItemsMarkup(activeLanguage, filter)}</div>
+        </div>
+      </div>
+    </div>
+  `;
 
   const initSettingsMenu = () => {
     const trigger = document.querySelector('button[aria-label="Settings"]');
@@ -121,8 +252,25 @@
       return;
     }
 
+    const dialogPortal = document.getElementById('dialog-portal') || (() => {
+      const portal = document.createElement('div');
+      portal.id = 'dialog-portal';
+      document.body.appendChild(portal);
+      return portal;
+    })();
+
     let isOpen = false;
+    let isLanguageDialogOpen = false;
+    let languageFilter = '';
+    let previousBodyOverflow = '';
     const darkMediaQuery = window.matchMedia(DARK_MEDIA_QUERY);
+    const languageDialogIds = {
+      dialog: createId('radix-language-dialog'),
+      title: createId('radix-language-title'),
+      label: createId('radix-language-label'),
+      input: createId('radix-language-input'),
+      list: createId('radix-language-list')
+    };
 
     const getThemeButtons = () => Array.from(menu.querySelectorAll('[data-settings-theme]'));
 
@@ -190,8 +338,95 @@
       }
     };
 
+    const closeLanguageDialog = ({ focusTrigger = false } = {}) => {
+      if (!isLanguageDialogOpen) {
+        return;
+      }
+
+      isLanguageDialogOpen = false;
+      dialogPortal.innerHTML = '';
+      document.body.style.overflow = previousBodyOverflow;
+
+      if (focusTrigger) {
+        window.requestAnimationFrame(() => trigger.focus({ preventScroll: true }));
+      }
+    };
+
+    const renderLanguageDialog = () => {
+      dialogPortal.innerHTML = buildLanguageDialogMarkup(getLanguagePreference(), languageFilter, languageDialogIds);
+
+      const dialog = dialogPortal.querySelector('[data-language-dialog="true"]');
+      const overlay = dialogPortal.querySelector('[data-language-overlay="true"]');
+      const input = dialogPortal.querySelector(`#${CSS.escape(languageDialogIds.input)}`);
+      const list = dialogPortal.querySelector(`#${CSS.escape(languageDialogIds.list)}`);
+
+      if (!(dialog instanceof HTMLElement) || !(overlay instanceof HTMLElement) || !(input instanceof HTMLInputElement) || !(list instanceof HTMLElement)) {
+        return;
+      }
+
+      overlay.addEventListener('click', () => closeLanguageDialog({ focusTrigger: true }));
+      dialog.addEventListener('click', (event) => event.stopPropagation());
+      dialog.addEventListener('pointerdown', (event) => event.stopPropagation());
+
+      input.addEventListener('input', () => {
+        languageFilter = input.value;
+        renderLanguageDialog();
+      });
+
+      list.addEventListener('click', (event) => {
+        const option = event.target.closest('[data-value]');
+        if (!(option instanceof HTMLElement)) {
+          return;
+        }
+
+        applyLanguage(option.getAttribute('data-value') || 'en');
+        languageFilter = '';
+        closeLanguageDialog({ focusTrigger: true });
+      });
+
+      list.querySelectorAll('[data-value]').forEach((option) => {
+        option.addEventListener('keydown', (event) => {
+          const items = Array.from(list.querySelectorAll('[data-value]')).filter((node) => node instanceof HTMLElement);
+          const currentIndex = items.indexOf(option);
+
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            applyLanguage(option.getAttribute('data-value') || 'en');
+            languageFilter = '';
+            closeLanguageDialog({ focusTrigger: true });
+          } else if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            items[(currentIndex + 1) % items.length]?.focus({ preventScroll: true });
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            items[(currentIndex - 1 + items.length) % items.length]?.focus({ preventScroll: true });
+          } else if (event.key === 'Escape') {
+            event.preventDefault();
+            closeLanguageDialog({ focusTrigger: true });
+          }
+        });
+      });
+
+      window.requestAnimationFrame(() => {
+        input.focus({ preventScroll: true });
+        input.setSelectionRange(input.value.length, input.value.length);
+      });
+    };
+
+    const openLanguageDialog = () => {
+      if (isLanguageDialogOpen) {
+        return;
+      }
+
+      closeMenu({ focusTrigger: false });
+      isLanguageDialogOpen = true;
+      previousBodyOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      renderLanguageDialog();
+    };
+
     const openMenu = () => {
-      if (isOpen) {
+      if (isOpen || isLanguageDialogOpen) {
         return;
       }
 
@@ -226,6 +461,7 @@
         event.preventDefault();
         openMenu();
       } else if (event.key === 'Escape') {
+        closeLanguageDialog({ focusTrigger: true });
         closeMenu({ focusTrigger: true });
       }
     });
@@ -242,7 +478,8 @@
 
       const action = event.target.closest('[data-settings-action="language"]');
       if (action instanceof HTMLElement) {
-        closeMenu({ focusTrigger: false });
+        languageFilter = '';
+        openLanguageDialog();
       }
     });
 
@@ -285,17 +522,45 @@
     menu.addEventListener('scroll', (event) => event.stopPropagation(), { passive: true });
 
     document.addEventListener('pointerdown', (event) => {
-      if (!isOpen) {
-        return;
-      }
-
       const target = event.target;
       if (!(target instanceof Node)) {
         return;
       }
 
+      if (isLanguageDialogOpen) {
+        const dialog = dialogPortal.querySelector('[data-language-dialog="true"]');
+        const overlay = dialogPortal.querySelector('[data-language-overlay="true"]');
+
+        if (overlay instanceof HTMLElement && overlay.contains(target)) {
+          closeLanguageDialog({ focusTrigger: true });
+          return;
+        }
+
+        if (dialog instanceof HTMLElement && !dialog.contains(target) && !trigger.contains(target)) {
+          closeLanguageDialog({ focusTrigger: false });
+        }
+
+        return;
+      }
+
+      if (!isOpen) {
+        return;
+      }
+
       if (!wrapper.contains(target) && !trigger.contains(target)) {
         closeMenu({ focusTrigger: false });
+      }
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        if (isLanguageDialogOpen) {
+          event.preventDefault();
+          closeLanguageDialog({ focusTrigger: true });
+        } else if (isOpen) {
+          event.preventDefault();
+          closeMenu({ focusTrigger: true });
+        }
       }
     });
 
@@ -313,11 +578,13 @@
 
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
+        closeLanguageDialog({ focusTrigger: false });
         closeMenu({ focusTrigger: false });
       }
     });
 
     window.addEventListener('blur', () => {
+      closeLanguageDialog({ focusTrigger: false });
       closeMenu({ focusTrigger: false });
     });
 
@@ -336,6 +603,7 @@
 
     syncThemeButtons();
     applyTheme(getThemePreference());
+    applyLanguage(getLanguagePreference());
   };
 
   if (document.readyState === 'loading') {
