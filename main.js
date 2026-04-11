@@ -95,7 +95,7 @@ async function createWindow() {
   await ensureStaticServer();
 
   const win = new BrowserWindow({
-    icon: path.join(__dirname, 'build/icon.ico'),
+    icon: path.join(__dirname, 'build/favicon.ico'),
     title: 'ChatGPT',
     fullscreen: true,
     webPreferences: {
@@ -123,7 +123,7 @@ async function createWindow() {
   win.webContents.setWindowOpenHandler(() => ({
     action: 'allow',
     overrideBrowserWindowOptions: {
-      icon: path.join(__dirname, 'build/icon.ico'),
+      icon: path.join(__dirname, 'build/favicon.ico'),
       title: 'ChatGPT',
       width: 520,
       height: 720,
@@ -149,7 +149,7 @@ app.whenReady().then(() => {
   });
 
   app.on('browser-window-created', (_event, newWindow) => {
-    const iconPath = path.join(__dirname, 'build/icon.ico');
+    const iconPath = path.join(__dirname, 'build/favicon.ico');
     if (newWindow.setIcon) newWindow.setIcon(iconPath);
     if (newWindow.setTitle) newWindow.setTitle('ChatGPT');
   });

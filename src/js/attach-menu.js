@@ -134,7 +134,7 @@
     if (!state.wrapper || !state.menu || !state.trigger) return;
 
     const rect = state.trigger.getBoundingClientRect();
-    const gap = 8;
+    const gap = 4;
     const x = Math.round(rect.left);
     const y = Math.round(rect.bottom + gap);
 

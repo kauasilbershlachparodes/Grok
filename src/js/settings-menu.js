@@ -3,7 +3,8 @@
   const THEME_STORAGE_KEY = 'grok-theme-preference';
   const LANGUAGE_STORAGE_KEY = 'grok-language-preference';
   const VIEWPORT_MARGIN = 8;
-  const GAP = 8;
+  const GAP = 6;
+  const ALIGN_OFFSET_X = 7;
   const DARK_MEDIA_QUERY = '(prefers-color-scheme: dark)';
   const LANGUAGES = [
     ['ar', 'العربية', 'Arabic'],
@@ -304,7 +305,7 @@
       const rect = trigger.getBoundingClientRect();
       const menuRect = menu.getBoundingClientRect();
       const x = Math.round(Math.min(
-        Math.max(VIEWPORT_MARGIN, rect.right - menuRect.width),
+        Math.max(VIEWPORT_MARGIN, rect.right - menuRect.width - ALIGN_OFFSET_X),
         window.innerWidth - menuRect.width - VIEWPORT_MARGIN
       ));
       const y = Math.round(Math.min(
